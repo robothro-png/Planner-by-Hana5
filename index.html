@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planner</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Itim&display=swap" rel="stylesheet">
+
+<style>
+body { margin:0; font-family:"Itim",sans-serif; background:#f5f6fa; }
+
+.header {
+  display:flex; flex-direction:column; padding:15px;
+  position:sticky; top:0; z-index:1000;
+  backdrop-filter:blur(10px);
+  background:rgba(255,255,255,0.8);
+}
+
+.top-row { display:flex; justify-content:space-between; }
+.buttons { display:flex; gap:8px; }
+button { border:none; padding:8px 12px; border-radius:12px; background:#ffd6e0; }
+
+.calendar {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+  padding:12px;
+}
+
+.day {
+  position:relative;
+  background:white;
+  border-radius:20px;
+  aspect-ratio:1/1;
+  overflow:hidden;
+}
+
+.day-name {
+  position:absolute;
+  top:8px;
+  left:12px;
+  font-weight:bold;
+  color:#111;
+  z-index:2;
+}
+
+.date-number {
+  position:absolute;
+  bottom:-25px;
+  right:-10px;
+  font-size:110px;
+  font-weight:900;
+  color:#111;
+  z-index:2;
+}
+
+.has-note .date-number {
+  font-size:22px;
+  top:8px;
+  right:10px;
+  bottom:auto;
+}
+
+.top-dots {
+  position:absolute;
+  top:6px;
+  right:10px;
+  display:flex;
+  gap:3px;
+  z-index:2;
+}
+
+.top-dot {
+  width:6px;
+  height:6px;
+  border-radius:50%;
+}
+
+.note-preview {
+  position:absolute;
+  bottom:10px;
+  left:10px;
+  right:10px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  z-index:2;
+}
+
+.note-box {
+  font-size:12px;
+  padding:4px 6px;
+  border-radius:8px;
+  color:white;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.saturday .day-name,
+.saturday .date-number { color:#b00020; }
+
+.editor { display:none; padding:15px; }
+
+.preview {
+  width:100%; height:250px;
+  border-radius:20px;
+  background-size:cover;
+  margin-bottom:10px;
+  position:relative;
+}
+
+.overlay { position:absolute; inset:0; border-radius:20px; }
+
+.note-input {
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:none;
+  margin-top:10px;
+}
+
+.note-list { margin-top:10px; }
+
+.note-item {
+  background:white;
+  border-radius:12px;
+  padding:8px;
+  margin-bottom:6px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.note-left {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.dot {
+  width:10px;
+  height:10px;
+  border-radius:50%;
+}
+
+.color-picker {
+  display:flex;
+  gap:6px;
+  margin-top:6px;
+}
+
+.color {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="calendarPage">
+
+<div class="header">
+  <div class="top-row">
+    <div id="monthLabel"></div>
+    <div class="buttons">
+      <button onclick="prevMonth()">◀</button>
+      <button onclick="nextMonth()">▶</button>
+      <button onclick="goToday()">🏠</button>
+    </div>
+  </div>
+  <div id="todayText"></div>
+</div>
+
+<div class="calendar" id="calendar"></div>
+</div>
+
+<div id="editorPage" class="editor">
+
+<button onclick="back()">⬅ กลับ</button>
+<h3 id="selectedDate"></h3>
+
+<input type="file" accept="image/*" onchange="loadImage(event)">
+
+<div class="preview" id="preview">
+  <div class="overlay" id="overlay"></div>
+</div>
+
+<label>Blur</label>
+<input type="range" min="0" max="20" value="0" oninput="updateStyle()">
+
+<label>Opacity</label>
+<input type="range" min="0" max="1" step="0.1" value="0.3" oninput="updateStyle()">
+
+<input id="noteInput" class="note-input" placeholder="เพิ่มโน้ต...">
+
+<div class="color-picker">
+  <div class="color" style="background:red" onclick="setColor('red')"></div>
+  <div class="color" style="background:orange" onclick="setColor('orange')"></div>
+  <div class="color" style="background:green" onclick="setColor('green')"></div>
+  <div class="color" style="background:blue" onclick="setColor('blue')"></div>
+</div>
+
+<button onclick="addNote()">➕ เพิ่มโน้ต</button>
+
+<div class="note-list" id="noteList"></div>
+
+<br>
+<button onclick="save()">💾 บันทึกทั้งหมด</button>
+<button onclick="remove()">🗑 ลบทั้งหมด</button>
+
+</div>
+
+<script>
+const monthNames=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const dayNamesFull=["วันอาทิตย์","วันจันทร์","วันอังคาร","วันพุธ","วันพฤหัส","วันศุกร์","วันเสาร์"];
+const dayNames=["อา","จ","อ","พ","พฤ","ศ","ส"];
+
+let currentDate=new Date();
+let selectedKey="";
+let imageData="";
+let notes=[];
+let selectedColor="red";
+
+let blurValue = 0;
+let opacityValue = 0.3;
+
+function renderCalendar(){
+  const cal=document.getElementById("calendar");
+  cal.innerHTML="";
+  const year=currentDate.getFullYear();
+  const month=currentDate.getMonth();
+
+  document.getElementById("monthLabel").innerText=
+    monthNames[month]+" "+(year+543);
+
+  const today=new Date();
+  document.getElementById("todayText").innerText=
+    dayNamesFull[today.getDay()]+" "+
+    today.getDate()+" "+
+    monthNames[today.getMonth()]+" "+
+    (today.getFullYear()+543);
+
+  const days=new Date(year,month+1,0).getDate();
+
+  for(let i=1;i<=days;i++){
+    const date=new Date(year,month,i);
+    const key=year+"-"+month+"-"+i;
+
+    const div=document.createElement("div");
+    div.className="day";
+
+    if(date.getDay()==6) div.classList.add("saturday");
+
+    const saved=JSON.parse(localStorage.getItem(key));
+
+    if(saved && saved.img){
+      div.style.backgroundImage = `url(${saved.img})`;
+      div.style.backgroundSize = "cover";
+      div.style.backgroundPosition = "center";
+
+      // ✅ overlay ใช้ opacity จริง
+      const overlay = document.createElement("div");
+      overlay.style.position = "absolute";
+      overlay.style.inset = "0";
+      overlay.style.borderRadius = "20px";
+      overlay.style.pointerEvents = "none";
+
+      const op = saved.opacity || 0.3;
+      overlay.style.background =
+        `linear-gradient(rgba(255,255,255,${op}), rgba(255,255,255,${op}))`;
+
+      div.appendChild(overlay);
+    }
+
+    if(saved && saved.notes && saved.notes.length>0){
+      div.classList.add("has-note");
+    }
+
+    div.innerHTML += `
+      <div class="day-name">${dayNames[date.getDay()]}</div>
+      <div class="date-number">${i}</div>
+      <div class="top-dots"></div>
+      <div class="note-preview"></div>
+    `;
+
+    if(saved && saved.notes){
+      const preview=div.querySelector(".note-preview");
+      const topDots=div.querySelector(".top-dots");
+
+      saved.notes.slice(0,4).forEach(n=>{
+        const box=document.createElement("div");
+        box.className="note-box";
+        box.style.background=n.color;
+        box.innerText=n.text;
+        preview.appendChild(box);
+      });
+
+      if(saved.notes.length > 4){
+        saved.notes.slice(0,3).forEach(n=>{
+          const d=document.createElement("div");
+          d.className="top-dot";
+          d.style.background=n.color;
+          topDots.appendChild(d);
+        });
+      }
+    }
+
+    div.onclick=()=>openEditor(key,i,date);
+    cal.appendChild(div);
+  }
+}
+
+function openEditor(key,day,date){
+  selectedKey=key;
+  document.getElementById("calendarPage").style.display="none";
+  document.getElementById("editorPage").style.display="block";
+
+  document.getElementById("selectedDate").innerText=
+    dayNamesFull[date.getDay()]+" "+day;
+
+  const saved=JSON.parse(localStorage.getItem(key));
+  if(saved){
+    imageData=saved.img||"";
+    notes=saved.notes||[];
+    blurValue = saved.blur || 0;
+    opacityValue = saved.opacity || 0.3;
+  } else notes=[];
+
+  renderNotes();
+
+  if(imageData){
+    document.getElementById("preview").style.backgroundImage=`url(${imageData})`;
+  }
+
+  document.querySelectorAll("input[type=range]")[0].value = blurValue;
+  document.querySelectorAll("input[type=range]")[1].value = opacityValue;
+  updateStyle();
+}
+
+function setColor(c){ selectedColor=c; }
+
+function addNote(){
+  const text=document.getElementById("noteInput").value;
+  if(!text) return;
+
+  notes.push({text, color:selectedColor});
+  document.getElementById("noteInput").value="";
+  renderNotes();
+}
+
+function renderNotes(){
+  const list=document.getElementById("noteList");
+  list.innerHTML="";
+
+  notes.forEach((n,i)=>{
+    const div=document.createElement("div");
+    div.className="note-item";
+
+    div.innerHTML=`
+      <div class="note-left">
+        <div class="dot" style="background:${n.color}"></div>
+        <span>${n.text}</span>
+      </div>
+      <div>
+        <button onclick="editNote(${i})">✏️</button>
+        <button onclick="deleteNote(${i})">🗑</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function editNote(i){
+  const t=prompt("แก้ไขโน้ต",notes[i].text);
+  if(t){ notes[i].text=t; renderNotes(); }
+}
+
+function deleteNote(i){
+  notes.splice(i,1);
+  renderNotes();
+}
+
+function loadImage(e){
+  const file=e.target.files[0];
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    imageData=ev.target.result;
+    document.getElementById("preview").style.backgroundImage=`url(${imageData})`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateStyle(){
+  blurValue = document.querySelectorAll("input[type=range]")[0].value;
+  opacityValue = document.querySelectorAll("input[type=range]")[1].value;
+
+  document.getElementById("preview").style.filter=`blur(${blurValue}px)`;
+
+  document.getElementById("overlay").style.background=
+    `linear-gradient(rgba(255,255,255,${opacityValue}), rgba(255,255,255,${opacityValue}))`;
+}
+
+function save(){
+  localStorage.setItem(selectedKey, JSON.stringify({
+    img:imageData,
+    notes:notes,
+    blur: blurValue,
+    opacity: opacityValue
+  }));
+  back();
+}
+
+function remove(){
+  localStorage.removeItem(selectedKey);
+  back();
+}
+
+function back(){
+  document.getElementById("calendarPage").style.display="block";
+  document.getElementById("editorPage").style.display="none";
+  renderCalendar();
+}
+
+function prevMonth(){ currentDate.setMonth(currentDate.getMonth()-1); renderCalendar(); }
+function nextMonth(){ currentDate.setMonth(currentDate.getMonth()+1); renderCalendar(); }
+function goToday(){ currentDate=new Date(); renderCalendar(); }
+
+renderCalendar();
+</script>
+
+</body>
+</html>
